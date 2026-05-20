@@ -19,11 +19,16 @@ TAKE_PROFIT_PCT = float(os.getenv("TAKE_PROFIT_PCT", "4.0"))
 
 # Balance management
 MIN_USDT_BALANCE = float(os.getenv("MIN_USDT_BALANCE", "10.0"))
-TRADE_BALANCE_PCT = float(os.getenv("TRADE_BALANCE_PCT", "0.9"))
+TRADE_BALANCE_PCT = float(os.getenv("TRADE_BALANCE_PCT", "0.1"))  # 10% max par trade
 
 # Trailing stop loss
 TRAILING_SL_ENABLED = os.getenv("TRAILING_SL_ENABLED", "true").lower() == "true"
 TRAILING_SL_PCT = float(os.getenv("TRAILING_SL_PCT", "1.5"))
+
+# Multi-crypto portfolio
+MAX_POSITIONS      = int(os.getenv("MAX_POSITIONS", "10"))       # positions max en simultanee
+SCAN_INTERVAL      = int(os.getenv("SCAN_INTERVAL", "300"))      # scan toutes les 5 min
+MULTI_CRYPTO       = os.getenv("MULTI_CRYPTO", "true").lower() == "true"  # activer le mode multi-crypto
 
 # Technical indicators
 RSI_PERIOD = 14
@@ -67,6 +72,8 @@ def validate_config():
         errors.append("QUANTITY must be positive")
     if STOP_LOSS_PCT <= 0 or STOP_LOSS_PCT >= 100:
         errors.append("STOP_LOSS_PCT must be between 0 and 100")
+    if TRADE_BALANCE_PCT > 0.25:
+        errors.append("TRADE_BALANCE_PCT > 25% est dangereux — valeur recommandee: 0.05 a 0.10")
     if TAKE_PROFIT_PCT <= 0 or TAKE_PROFIT_PCT >= 100:
         errors.append("TAKE_PROFIT_PCT must be between 0 and 100")
     return errors

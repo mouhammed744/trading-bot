@@ -3,6 +3,7 @@ Persistent trade journal — logs every opened/closed trade to data/trades.json.
 """
 import json
 import os
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
@@ -111,7 +112,7 @@ class TradeJournal:
             "losses": len(losses),
             "win_rate": round(len(wins) / len(trades) * 100, 1),
             "total_pnl_pct": round(sum(pnls), 2),
-            "total_pnl_usd": round(sum(t.pnl_usd for t in trades), 2),
+            "total_pnl_usd": round(sum(t.pnl_usd or 0.0 for t in trades), 2),
             "avg_pnl_pct": round(sum(pnls) / len(pnls), 2),
             "best_pct": round(max(pnls), 2),
             "worst_pct": round(min(pnls), 2),
@@ -142,8 +143,12 @@ class TradeJournal:
     # ------------------------------------------------------------------
 
     def _save(self):
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump([t.to_dict() for t in self._trades], f, indent=2)
+        dir_ = os.path.dirname(os.path.abspath(self.path))
+        with tempfile.NamedTemporaryFile("w", dir=dir_, delete=False,
+                                         suffix=".tmp", encoding="utf-8") as tf:
+            json.dump([t.to_dict() for t in self._trades], tf, indent=2)
+            tmp_path = tf.name
+        os.replace(tmp_path, self.path)
 
     def _load(self) -> List[TradeRecord]:
         if not os.path.exists(self.path):

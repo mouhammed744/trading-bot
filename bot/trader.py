@@ -23,7 +23,7 @@ class Trader:
         self.interval = config.INTERVAL
         self.quantity = config.QUANTITY
         logger.info(
-            "Trader initialised — symbol=%s interval=%s testnet=%s",
+            "Trader initialise — symbol=%s interval=%s testnet=%s",
             self.symbol, self.interval, testnet,
         )
 
@@ -31,10 +31,9 @@ class Trader:
     # Market data
     # ------------------------------------------------------------------
 
-    def get_klines(self, limit: int = 200, interval: str = None) -> pd.DataFrame:
-        """Fetch OHLCV klines and return a clean DataFrame."""
+    def get_klines(self, limit: int = 200, interval: str = None, symbol: str = None) -> pd.DataFrame:
         raw = self.client.get_klines(
-            symbol=self.symbol,
+            symbol=symbol or self.symbol,
             interval=interval or self.interval,
             limit=limit,
         )
@@ -49,8 +48,8 @@ class Trader:
         df.set_index("open_time", inplace=True)
         return df
 
-    def get_ticker_price(self) -> float:
-        ticker = self.client.get_symbol_ticker(symbol=self.symbol)
+    def get_ticker_price(self, symbol: str = None) -> float:
+        ticker = self.client.get_symbol_ticker(symbol=symbol or self.symbol)
         return float(ticker["price"])
 
     def get_account_balance(self, asset: str = "USDT") -> float:
@@ -64,36 +63,31 @@ class Trader:
     # Order execution
     # ------------------------------------------------------------------
 
-    def place_market_buy(self, quantity: float = None) -> dict:
+    def place_market_buy(self, quantity: float = None, symbol: str = None) -> dict:
+        sym = symbol or self.symbol
         qty = quantity if quantity is not None else self.quantity
-        logger.info("Placing MARKET BUY — %s qty=%.5f", self.symbol, qty)
+        logger.info("MARKET BUY — %s qty=%.6f", sym, qty)
         try:
-            order = self.client.order_market_buy(
-                symbol=self.symbol,
-                quantity=qty,
-            )
-            logger.info("BUY order filled: %s", order)
+            order = self.client.order_market_buy(symbol=sym, quantity=qty)
+            logger.info("BUY rempli: %s", order.get("orderId"))
             return order
         except BinanceAPIException as exc:
-            logger.error("BUY order failed: %s", exc)
+            logger.error("BUY echoue (%s): %s", sym, exc)
             raise
 
-    def place_market_sell(self, quantity: float = None) -> dict:
+    def place_market_sell(self, quantity: float = None, symbol: str = None) -> dict:
+        sym = symbol or self.symbol
         qty = quantity if quantity is not None else self.quantity
-        logger.info("Placing MARKET SELL — %s qty=%.5f", self.symbol, qty)
+        logger.info("MARKET SELL — %s qty=%.6f", sym, qty)
         try:
-            order = self.client.order_market_sell(
-                symbol=self.symbol,
-                quantity=qty,
-            )
-            logger.info("SELL order filled: %s", order)
+            order = self.client.order_market_sell(symbol=sym, quantity=qty)
+            logger.info("SELL rempli: %s", order.get("orderId"))
             return order
         except BinanceAPIException as exc:
-            logger.error("SELL order failed: %s", exc)
+            logger.error("SELL echoue (%s): %s", sym, exc)
             raise
 
     def get_filled_price(self, order: dict) -> float:
-        """Extract average fill price from an order response."""
         fills = order.get("fills", [])
         if fills:
             total_qty = sum(float(f["qty"]) for f in fills)
@@ -110,7 +104,7 @@ class Trader:
             self.client.ping()
             return True
         except Exception as exc:
-            logger.error("Ping failed: %s", exc)
+            logger.error("Ping echoue: %s", exc)
             return False
 
     def get_server_time_offset_ms(self) -> int:

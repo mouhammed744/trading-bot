@@ -5,6 +5,7 @@ and selects the best signal using weighted voting.
 import json
 import logging
 import os
+import tempfile
 from typing import List, Optional
 import pandas as pd
 
@@ -14,6 +15,8 @@ from bot.strategies.bollinger import BollingerStrategy
 from bot.strategies.breakout import BreakoutStrategy
 from bot.strategies.ema_cross import EMACrossStrategy
 from bot.strategies.stoch_rsi import StochRSIStrategy
+from bot.strategies.volume_surge import VolumeSurgeStrategy
+from bot.strategies.momentum import MomentumStrategy
 
 SCORES_FILE = os.path.join("data", "strategy_scores.json")
 BUY = "BUY"
@@ -36,6 +39,8 @@ class StrategyManager:
             BreakoutStrategy(),
             EMACrossStrategy(),
             StochRSIStrategy(),
+            VolumeSurgeStrategy(),
+            MomentumStrategy(),
         ]
         self._scores = self._load_scores()
 
@@ -138,8 +143,12 @@ class StrategyManager:
 
     def _save_scores(self):
         os.makedirs(os.path.dirname(SCORES_FILE), exist_ok=True)
-        with open(SCORES_FILE, "w", encoding="utf-8") as f:
-            json.dump(self._scores, f, indent=2)
+        dir_ = os.path.dirname(os.path.abspath(SCORES_FILE))
+        with tempfile.NamedTemporaryFile("w", dir=dir_, delete=False,
+                                         suffix=".tmp", encoding="utf-8") as tf:
+            json.dump(self._scores, tf, indent=2)
+            tmp_path = tf.name
+        os.replace(tmp_path, SCORES_FILE)
 
     def _load_scores(self) -> dict:
         if os.path.exists(SCORES_FILE):

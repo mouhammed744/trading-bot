@@ -32,3 +32,9 @@ env/
 .idea/
 *.swp
 *.swo
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Fichiers temporaires atomiques
+*.tmp
