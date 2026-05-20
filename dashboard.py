@@ -23,7 +23,17 @@ ROOT = Path(__file__).parent
 os.chdir(ROOT)
 load_dotenv()
 
+# Injecte les secrets Streamlit Cloud dans os.environ avant d'importer config
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, str):
+            os.environ[_k] = _v
+except Exception:
+    pass
+
+import importlib
 from bot import config
+importlib.reload(config)
 from bot.trader import Trader
 from bot.market_analyzer import MarketAnalyzer
 from bot.strategy_manager import StrategyManager
