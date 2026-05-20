@@ -186,18 +186,56 @@ if trader is None or not trader.ping():
 # -----------------------------------------------------------------------
 
 with st.spinner("Chargement des données…"):
+    _errors = []
+
     try:
-        balance_usdt  = trader.get_account_balance("USDT")
+        balance_usdt = trader.get_account_balance("USDT")
+    except Exception as exc:
+        balance_usdt = 0.0
+        _errors.append(f"Solde USDT : {type(exc).__name__}: {exc}")
+
+    try:
         df_klines     = trader.get_klines(limit=200, symbol=config.SYMBOL)
         current_price = float(df_klines["close"].iloc[-1])
-        signals       = strategy_mgr.get_signal(df_klines)
-        analysis      = analyzer.analyze(df_klines)
-        crypto_market = get_crypto_market(trader)
-        commodities   = get_commodity_data()
     except Exception as exc:
-        logger.error("Erreur chargement dashboard: %s", exc, exc_info=True)
-        st.error("Erreur lors du chargement des données. Consultez trading.log.")
-        st.stop()
+        df_klines     = None
+        current_price = 0.0
+        _errors.append(f"Klines {config.SYMBOL} : {type(exc).__name__}: {exc}")
+
+    if df_klines is not None:
+        try:
+            signals = strategy_mgr.get_signal(df_klines)
+        except Exception as exc:
+            signals = {"signal": "HOLD", "buy_pct": 0, "sell_pct": 0, "details": {}}
+            _errors.append(f"Stratégies : {type(exc).__name__}: {exc}")
+
+        try:
+            analysis = analyzer.analyze(df_klines)
+        except Exception as exc:
+            analysis = {"trend": "—", "confidence": 0, "rsi": 0, "ema50": 0,
+                        "ema200": 0, "atr_pct": 0, "recommendation": "—", "reasons": []}
+            _errors.append(f"Analyse marché : {type(exc).__name__}: {exc}")
+    else:
+        signals  = {"signal": "HOLD", "buy_pct": 0, "sell_pct": 0, "details": {}}
+        analysis = {"trend": "—", "confidence": 0, "rsi": 0, "ema50": 0,
+                    "ema200": 0, "atr_pct": 0, "recommendation": "—", "reasons": []}
+
+    try:
+        crypto_market = get_crypto_market(trader)
+    except Exception as exc:
+        crypto_market = []
+        _errors.append(f"Marché crypto : {type(exc).__name__}: {exc}")
+
+    try:
+        commodities = get_commodity_data()
+    except Exception as exc:
+        commodities = {}
+        _errors.append(f"Matières premières : {type(exc).__name__}: {exc}")
+
+    if _errors:
+        with st.expander("⚠️ Erreurs de chargement (cliquer pour voir)", expanded=True):
+            for e in _errors:
+                st.warning(e)
 
 portfolio_data = load_portfolio_file()
 scores  = load_scores()
@@ -263,47 +301,49 @@ st.divider()
 
 st.markdown(f'<p class="section-title">📊 Graphique {config.SYMBOL}</p>', unsafe_allow_html=True)
 
-close  = df_klines["close"]
-ema50  = close.ewm(span=50,  adjust=False).mean()
-ema200 = close.ewm(span=200, adjust=False).mean()
+if df_klines is not None:
+    close  = df_klines["close"]
+    ema50  = close.ewm(span=50,  adjust=False).mean()
+    ema200 = close.ewm(span=200, adjust=False).mean()
 
-fig_chart = go.Figure()
-fig_chart.add_trace(go.Candlestick(
-    x=df_klines.index,
-    open=df_klines["open"], high=df_klines["high"],
-    low=df_klines["low"],   close=df_klines["close"],
-    name="Prix",
-    increasing_line_color="#00ff88", decreasing_line_color="#ff4444",
-))
-fig_chart.add_trace(go.Scatter(x=df_klines.index, y=ema50,
-    name="EMA 50",  line=dict(color="#f7931a", width=1.5)))
-fig_chart.add_trace(go.Scatter(x=df_klines.index, y=ema200,
-    name="EMA 200", line=dict(color="#627eea", width=1.5)))
+    fig_chart = go.Figure()
+    fig_chart.add_trace(go.Candlestick(
+        x=df_klines.index,
+        open=df_klines["open"], high=df_klines["high"],
+        low=df_klines["low"],   close=df_klines["close"],
+        name="Prix",
+        increasing_line_color="#00ff88", decreasing_line_color="#ff4444",
+    ))
+    fig_chart.add_trace(go.Scatter(x=df_klines.index, y=ema50,
+        name="EMA 50",  line=dict(color="#f7931a", width=1.5)))
+    fig_chart.add_trace(go.Scatter(x=df_klines.index, y=ema200,
+        name="EMA 200", line=dict(color="#627eea", width=1.5)))
 
-# Points d'achat/vente
-for t in trades[-20:]:
-    try:
-        fig_chart.add_trace(go.Scatter(
-            x=[pd.Timestamp(t.entry_time)], y=[t.entry_price],
-            mode="markers", marker=dict(symbol="triangle-up", color="#00ff88", size=10),
-            showlegend=False,
-        ))
-        if t.exit_price:
+    for t in trades[-20:]:
+        try:
             fig_chart.add_trace(go.Scatter(
-                x=[pd.Timestamp(t.exit_time)], y=[t.exit_price],
-                mode="markers", marker=dict(symbol="triangle-down", color="#ff4444", size=10),
+                x=[pd.Timestamp(t.entry_time)], y=[t.entry_price],
+                mode="markers", marker=dict(symbol="triangle-up", color="#00ff88", size=10),
                 showlegend=False,
             ))
-    except Exception:
-        pass
+            if t.exit_price:
+                fig_chart.add_trace(go.Scatter(
+                    x=[pd.Timestamp(t.exit_time)], y=[t.exit_price],
+                    mode="markers", marker=dict(symbol="triangle-down", color="#ff4444", size=10),
+                    showlegend=False,
+                ))
+        except Exception:
+            pass
 
-fig_chart.update_layout(
-    template="plotly_dark", height=420,
-    xaxis_rangeslider_visible=False,
-    margin=dict(l=10, r=10, t=10, b=10),
-    legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1),
-)
-st.plotly_chart(fig_chart, use_container_width=True)
+    fig_chart.update_layout(
+        template="plotly_dark", height=420,
+        xaxis_rangeslider_visible=False,
+        margin=dict(l=10, r=10, t=10, b=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1),
+    )
+    st.plotly_chart(fig_chart, use_container_width=True)
+else:
+    st.warning("Graphique indisponible — impossible de charger les données OHLCV.")
 
 # -----------------------------------------------------------------------
 # Analyse marché + Signaux stratégies
