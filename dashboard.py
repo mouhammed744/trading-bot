@@ -66,11 +66,98 @@ _check_password()
 
 st.markdown("""
 <style>
-[data-testid="metric-container"] { background:#1e1e2e; border-radius:10px; padding:12px; }
+/* ── Base ── */
+[data-testid="metric-container"] {
+    background:#1e1e2e; border-radius:10px; padding:12px;
+}
 .up   { color:#00ff88; font-weight:bold; }
 .down { color:#ff4444; font-weight:bold; }
 .flat { color:#aaaaaa; }
 .section-title { font-size:1.15rem; font-weight:700; margin-bottom:6px; }
+
+/* ── Mobile ── */
+@media (max-width: 768px) {
+
+    /* Réduit les marges globales */
+    .main .block-container {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+        padding-top: 0.5rem !important;
+    }
+
+    /* Colonnes : 2 par ligne max sur mobile */
+    [data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+        gap: 0.4rem !important;
+    }
+    [data-testid="column"] {
+        min-width: 45% !important;
+        flex: 1 1 45% !important;
+    }
+
+    /* Métriques plus compactes */
+    [data-testid="metric-container"] {
+        padding: 8px !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1rem !important;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 0.7rem !important;
+    }
+    [data-testid="stMetricDelta"] {
+        font-size: 0.7rem !important;
+    }
+
+    /* Titre de section plus petit */
+    .section-title {
+        font-size: 0.95rem !important;
+    }
+
+    /* Titre principal */
+    h1 { font-size: 1.3rem !important; }
+    h2 { font-size: 1.1rem !important; }
+    h3 { font-size: 1rem !important; }
+
+    /* Tableau scrollable horizontalement */
+    [data-testid="stDataFrame"] {
+        overflow-x: auto !important;
+    }
+
+    /* Graphiques moins hauts */
+    .js-plotly-plot { max-height: 280px !important; }
+
+    /* Barre de recherche pleine largeur */
+    [data-testid="stTextInput"] input {
+        font-size: 0.9rem !important;
+    }
+
+    /* Sidebar collapse auto sur mobile — déjà géré par Streamlit */
+
+    /* Bouton reconnecter */
+    [data-testid="stButton"] button {
+        width: 100% !important;
+        font-size: 0.85rem !important;
+    }
+
+    /* Progress bar */
+    [data-testid="stProgressBar"] {
+        height: 6px !important;
+    }
+
+    /* Divider moins épais */
+    hr { margin: 0.5rem 0 !important; }
+}
+
+/* ── Très petit écran (< 480px) ── */
+@media (max-width: 480px) {
+    [data-testid="column"] {
+        min-width: 100% !important;
+        flex: 1 1 100% !important;
+    }
+    h1 { font-size: 1.1rem !important; }
+    [data-testid="stMetricValue"] { font-size: 0.9rem !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -373,9 +460,9 @@ if df_klines is not None:
             pass
 
     fig_chart.update_layout(
-        template="plotly_dark", height=420,
+        template="plotly_dark", height=320,
         xaxis_rangeslider_visible=False,
-        margin=dict(l=10, r=10, t=10, b=10),
+        margin=dict(l=0, r=0, t=10, b=0),
         legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1),
     )
     st.plotly_chart(fig_chart, use_container_width=True)
@@ -614,7 +701,7 @@ if crypto_market:
             fig_up = px.bar(df_chg.head(10), x="symbol", y="chg",
                             color_discrete_sequence=["#00ff88"],
                             labels={"chg": "Variation %", "symbol": ""})
-            fig_up.update_layout(template="plotly_dark", height=250,
+            fig_up.update_layout(template="plotly_dark", height=200,
                                  margin=dict(l=0, r=0, t=10, b=0))
             st.plotly_chart(fig_up, use_container_width=True)
         with c_down:
@@ -622,7 +709,7 @@ if crypto_market:
             fig_down = px.bar(df_chg.tail(10).sort_values("chg"), x="symbol", y="chg",
                               color_discrete_sequence=["#ff4444"],
                               labels={"chg": "Variation %", "symbol": ""})
-            fig_down.update_layout(template="plotly_dark", height=250,
+            fig_down.update_layout(template="plotly_dark", height=200,
                                    margin=dict(l=0, r=0, t=10, b=0))
             st.plotly_chart(fig_down, use_container_width=True)
 
