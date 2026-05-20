@@ -8,11 +8,29 @@ from bot import config
 logger = logging.getLogger("trading_bot.trader")
 
 
+_LIVE_ENDPOINTS = [
+    "https://api.binance.com/api",
+    "https://api1.binance.com/api",
+    "https://api2.binance.com/api",
+    "https://api3.binance.com/api",
+    "https://api-gcp.binance.com/api",
+]
+
 def _make_client(testnet: bool) -> Client:
-    client = Client(config.API_KEY, config.API_SECRET)
     if testnet:
+        client = Client(config.API_KEY, config.API_SECRET)
         client.API_URL = config.TESTNET_BASE_URL
-    return client
+        return client
+    for endpoint in _LIVE_ENDPOINTS:
+        try:
+            client = Client(config.API_KEY, config.API_SECRET)
+            client.API_URL = endpoint
+            client.ping()
+            logger.info("Binance connecte via %s", endpoint)
+            return client
+        except Exception:
+            logger.warning("Endpoint inaccessible: %s", endpoint)
+    raise ConnectionError("Aucun endpoint Binance accessible")
 
 
 class Trader:
