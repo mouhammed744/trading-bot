@@ -98,7 +98,8 @@ def get_commodity_data() -> dict:
 # -----------------------------------------------------------------------
 
 @st.cache_resource
-def get_trader():
+def get_trader(_ts: int = 0):
+    load_dotenv(override=True)
     try:
         return Trader(testnet=False)
     except Exception:
@@ -172,7 +173,10 @@ def sparkline(values: list, color: str) -> go.Figure:
 st.title("📈 Trading Bot Dashboard — Multi-Crypto")
 st.caption(f"Intervalle : **{config.INTERVAL}** | Max positions : **{config.MAX_POSITIONS}** | Actualisation : **30s**")
 
-trader       = get_trader()
+if st.sidebar.button("🔄 Reconnecter à Binance"):
+    st.cache_resource.clear()
+
+trader       = get_trader(_ts=int(time.time() // 60))
 analyzer     = get_analyzer()
 strategy_mgr = get_strategy_mgr()
 journal      = TradeJournal()
