@@ -5,6 +5,7 @@ Lancement : streamlit run dashboard.py
 import os
 import json
 import time
+import importlib
 from pathlib import Path
 
 import hmac
@@ -31,7 +32,6 @@ try:
 except Exception:
     pass
 
-import importlib
 from bot import config
 importlib.reload(config)
 from bot.trader import Trader
@@ -50,7 +50,7 @@ st.set_page_config(
 def _check_password() -> bool:
     pwd_env = os.getenv("DASHBOARD_PASSWORD", "")
     if not pwd_env:
-        return True  # pas de mot de passe configure = acces libre en local
+        return True
     def _submit():
         entered = st.session_state.get("dashboard_pwd", "")
         st.session_state["authenticated"] = hmac.compare_digest(entered, pwd_env)
@@ -75,7 +75,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------
-# Matières premières — symboles Yahoo Finance
+# Matières premières
 # -----------------------------------------------------------------------
 COMMODITIES = {
     "🥇 Or":            "GC=F",
@@ -104,7 +104,7 @@ def get_commodity_data() -> dict:
     return result
 
 # -----------------------------------------------------------------------
-# Helpers Binance
+# Helpers Binance + fallbacks
 # -----------------------------------------------------------------------
 
 @st.cache_resource
@@ -152,22 +152,24 @@ def get_crypto_market(_trader) -> list:
         coins = r.json()
         result = []
         for c in coins:
-            result.append({
-                "symbol":             c["symbol"].upper() + "USDT",
-                "lastPrice":          str(c.get("current_price", 0)),
-                "priceChangePercent": str(round(c.get("price_change_percentage_24h") or 0, 2)),
-                "quoteVolume":        str(c.get("total_volume", 0)),
-                "highPrice":          str(c.get("high_24h", 0)),
-                "lowPrice":           str(c.get("low_24h", 0)),
-                "count":              0,
-                "_source":            "coingecko",
-            })
+            try:
+                result.append({
+                    "symbol":             c["symbol"].upper() + "USDT",
+                    "lastPrice":          str(c.get("current_price") or 0),
+                    "priceChangePercent": str(round(c.get("price_change_percentage_24h") or 0, 2)),
+                    "quoteVolume":        str(c.get("total_volume") or 0),
+                    "highPrice":          str(c.get("high_24h") or 0),
+                    "lowPrice":           str(c.get("low_24h") or 0),
+                    "count":              0,
+                })
+            except Exception:
+                pass
         return result
     except Exception:
         return []
 
 @st.cache_data(ttl=300)
-def get_btc_ohlcv_fallback() -> pd.DataFrame:
+def get_btc_ohlcv_fallback():
     """Données OHLCV BTC via yfinance si Binance indisponible."""
     try:
         hist = yf.Ticker("BTC-USD").history(period="7d", interval="1h")
@@ -196,11 +198,6 @@ def load_scores() -> dict:
         except Exception:
             pass
     return {}
-
-def color_chg(val: float) -> str:
-    if val > 0:   return f'<span class="up">▲ {val:+.2f}%</span>'
-    if val < 0:   return f'<span class="down">▼ {val:+.2f}%</span>'
-    return f'<span class="flat">— {val:.2f}%</span>'
 
 def sparkline(values: list, color: str) -> go.Figure:
     fig = go.Figure(go.Scatter(
@@ -233,14 +230,13 @@ journal      = TradeJournal()
 
 binance_ok = trader is not None and trader.ping()
 if not binance_ok:
-    st.warning("⚠️ Binance inaccessible depuis ce serveur (restriction réseau). Solde et ordres indisponibles — données de marché via sources alternatives.")
+    st.warning("⚠️ Binance inaccessible depuis ce serveur (restriction réseau). Solde indisponible — données de marché via sources alternatives.")
 
 # -----------------------------------------------------------------------
 # Chargement données
 # -----------------------------------------------------------------------
 
 with st.spinner("Chargement des données…"):
-    # Solde (Binance uniquement)
     balance_usdt = None
     if binance_ok:
         try:
@@ -248,7 +244,6 @@ with st.spinner("Chargement des données…"):
         except Exception:
             pass
 
-    # OHLCV : Binance en priorité, yfinance en fallback
     df_klines     = None
     current_price = 0.0
     if binance_ok:
@@ -262,7 +257,6 @@ with st.spinner("Chargement des données…"):
         if df_klines is not None:
             current_price = float(df_klines["close"].iloc[-1])
 
-    # Signaux & analyse
     if df_klines is not None:
         try:
             signals = strategy_mgr.get_signal(df_klines)
@@ -286,10 +280,9 @@ scores  = load_scores()
 trades  = journal.closed_trades()
 stats   = journal.stats()
 
-# PnL global portefeuille
 total_pnl_pct = 0.0
 n_pos = len(portfolio_data)
-if portfolio_data:
+if portfolio_data and binance_ok:
     pnls = []
     for sym, pos in portfolio_data.items():
         try:
@@ -305,13 +298,13 @@ if portfolio_data:
 # -----------------------------------------------------------------------
 
 m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("Solde USDT",        f"{balance_usdt:,.2f} USDT" if balance_usdt is not None else "N/A")
-m2.metric(f"{config.SYMBOL}",  f"{current_price:,.2f} USDT" if current_price else "N/A")
-m3.metric("Positions ouvertes",f"{n_pos} / {config.MAX_POSITIONS}")
-m4.metric("PnL portefeuille",  f"{total_pnl_pct:+.2f}%" if binance_ok else "N/A",
+m1.metric("Solde USDT",         f"{balance_usdt:,.2f} USDT" if balance_usdt is not None else "N/A")
+m2.metric(f"{config.SYMBOL}",   f"{current_price:,.2f} USDT" if current_price else "N/A")
+m3.metric("Positions ouvertes", f"{n_pos} / {config.MAX_POSITIONS}")
+m4.metric("PnL portefeuille",   f"{total_pnl_pct:+.2f}%" if binance_ok else "N/A",
           delta_color="normal" if total_pnl_pct >= 0 else "inverse")
-m5.metric("Signal consensus",  signals["signal"],
-          f"BUY {signals['buy_pct']:.0f}%  SELL {signals['sell_pct']:.0f}%" if signals["signal"] != "—" else "")
+m5.metric("Signal consensus",   signals["signal"],
+          f"BUY {signals['buy_pct']:.0f}%  SELL {signals['sell_pct']:.0f}%" if signals["signal"] not in ("—", "HOLD") else "")
 
 st.divider()
 
@@ -335,12 +328,12 @@ if commodities:
         )
         col.plotly_chart(sparkline(data["week"], color), use_container_width=True)
 else:
-    st.warning("Données des matières premières indisponibles (vérifiez la connexion internet).")
+    st.warning("Données des matières premières indisponibles.")
 
 st.divider()
 
 # -----------------------------------------------------------------------
-# Graphique chandelles BTC (ou symbole principal)
+# Graphique chandelles
 # -----------------------------------------------------------------------
 
 st.markdown(f'<p class="section-title">📊 Graphique {config.SYMBOL}</p>', unsafe_allow_html=True)
@@ -387,10 +380,10 @@ if df_klines is not None:
     )
     st.plotly_chart(fig_chart, use_container_width=True)
 else:
-    st.warning("Graphique indisponible — impossible de charger les données OHLCV.")
+    st.warning("Graphique indisponible.")
 
 # -----------------------------------------------------------------------
-# Analyse marché + Signaux stratégies
+# Analyse marché + Signaux
 # -----------------------------------------------------------------------
 
 col_a, col_s = st.columns(2)
@@ -418,15 +411,15 @@ with col_s:
     st.markdown('<p class="section-title">🤖 Signaux des 7 stratégies</p>', unsafe_allow_html=True)
     rows_sig = []
     for name, detail in signals["details"].items():
-        sig  = detail.get("signal", "HOLD")
-        w    = detail.get("weight", 1.0)
-        sc   = scores.get(name, {})
+        sig = detail.get("signal", "HOLD")
+        w   = detail.get("weight", 1.0)
+        sc  = scores.get(name, {})
         rows_sig.append({
             "Stratégie": name,
-            "Signal": sig,
-            "Poids": f"{w:.2f}",
-            "Win Rate": f"{sc.get('win_rate', 0):.1f}%",
-            "Trades": sc.get("trades", 0),
+            "Signal":    sig,
+            "Poids":     f"{w:.2f}",
+            "Win Rate":  f"{sc.get('win_rate', 0):.1f}%",
+            "Trades":    sc.get("trades", 0),
         })
     df_sig = pd.DataFrame(rows_sig)
 
@@ -435,140 +428,117 @@ with col_s:
         if val == "SELL": return "color:#ff4444;font-weight:bold"
         return "color:#aaaaaa"
 
-    st.dataframe(df_sig.style.map(color_sig, subset=["Signal"]),
-                 use_container_width=True, hide_index=True)
-    st.markdown(f"**BUY {signals['buy_pct']:.0f}%** | **SELL {signals['sell_pct']:.0f}%**")
-    st.progress(int(signals["buy_pct"]) / 100)
+    if not df_sig.empty:
+        st.dataframe(df_sig.style.map(color_sig, subset=["Signal"]),
+                     use_container_width=True, hide_index=True)
+        st.markdown(f"**BUY {signals['buy_pct']:.0f}%** | **SELL {signals['sell_pct']:.0f}%**")
+        st.progress(int(signals["buy_pct"]) / 100)
+    else:
+        st.info("Signaux indisponibles.")
 
 st.divider()
 
 # -----------------------------------------------------------------------
-# PORTEFEUILLE MULTI-CRYPTO — positions ouvertes avec évolution
+# PORTEFEUILLE
 # -----------------------------------------------------------------------
 
 st.markdown('<p class="section-title">💼 Portefeuille — Positions ouvertes</p>', unsafe_allow_html=True)
 
-if portfolio_data:
+if portfolio_data and binance_ok:
     rows_port = []
     for sym, pos in portfolio_data.items():
         try:
-            price  = trader.get_ticker_price(symbol=sym)
-            pnl_p  = (price - pos["entry_price"]) / pos["entry_price"] * 100
-            pnl_u  = (price - pos["entry_price"]) * pos["quantity"]
+            price   = trader.get_ticker_price(symbol=sym)
+            pnl_p   = (price - pos["entry_price"]) / pos["entry_price"] * 100
+            pnl_u   = (price - pos["entry_price"]) * pos["quantity"]
             sl_dist = (price - pos["stop_loss"]) / price * 100
             tp_dist = (pos["take_profit"] - price) / price * 100
             rows_port.append({
-                "Crypto":       sym,
-                "Stratégie":    pos.get("strategy", "—"),
-                "Entrée":       f"{pos['entry_price']:,.4f}",
-                "Prix actuel":  f"{price:,.4f}",
-                "PnL %":        f"{pnl_p:+.2f}%",
-                "PnL USDT":     f"{pnl_u:+.4f}",
-                "Stop Loss":    f"{pos['stop_loss']:,.4f}",
-                "Take Profit":  f"{pos['take_profit']:,.4f}",
-                "Dist. SL":     f"{sl_dist:.2f}%",
-                "Dist. TP":     f"{tp_dist:.2f}%",
+                "Crypto":      sym,
+                "Stratégie":   pos.get("strategy", "—"),
+                "Entrée":      f"{pos['entry_price']:,.4f}",
+                "Prix actuel": f"{price:,.4f}",
+                "PnL %":       f"{pnl_p:+.2f}%",
+                "PnL USDT":    f"{pnl_u:+.4f}",
+                "Stop Loss":   f"{pos['stop_loss']:,.4f}",
+                "Take Profit": f"{pos['take_profit']:,.4f}",
+                "Dist. SL":    f"{sl_dist:.2f}%",
+                "Dist. TP":    f"{tp_dist:.2f}%",
             })
         except Exception:
             pass
-
-    df_port = pd.DataFrame(rows_port)
-
-    def color_pnl_port(val):
-        if isinstance(val, str) and val.startswith("+"): return "color:#00ff88;font-weight:bold"
-        if isinstance(val, str) and val.startswith("-"): return "color:#ff4444;font-weight:bold"
-        return ""
-
-    st.dataframe(
-        df_port.style.map(color_pnl_port, subset=["PnL %", "PnL USDT"]),
-        use_container_width=True, hide_index=True,
-    )
-
-    # Mini graphiques des positions
-    st.markdown("**Évolution des positions (dernières 24h)**")
-    pos_cols = st.columns(min(len(portfolio_data), 4))
-    for col, (sym, pos) in zip(pos_cols, list(portfolio_data.items())[:4]):
-        try:
-            df_pos = trader.get_klines(limit=96, interval="15m", symbol=sym)
-            close_pos = df_pos["close"].tolist()
-            entry = pos["entry_price"]
-            last  = close_pos[-1]
-            pnl   = (last - entry) / entry * 100
-            clr   = "#00ff88" if pnl >= 0 else "#ff4444"
-            col.markdown(f"**{sym}** {'+' if pnl>=0 else ''}{pnl:.2f}%")
-            col.plotly_chart(sparkline(close_pos, clr), use_container_width=True)
-        except Exception:
-            pass
+    if rows_port:
+        df_port = pd.DataFrame(rows_port)
+        def color_pnl_port(val):
+            if isinstance(val, str) and val.startswith("+"): return "color:#00ff88;font-weight:bold"
+            if isinstance(val, str) and val.startswith("-"): return "color:#ff4444;font-weight:bold"
+            return ""
+        st.dataframe(df_port.style.map(color_pnl_port, subset=["PnL %", "PnL USDT"]),
+                     use_container_width=True, hide_index=True)
 else:
-    st.info("Aucune position ouverte — le bot surveille le marché et cherche des opportunités.")
+    st.info("Aucune position ouverte — le bot surveille le marché.")
 
 st.divider()
 
 # -----------------------------------------------------------------------
-# MARCHÉ CRYPTO — Top 50 par volume avec évolution 24h
+# MARCHÉ CRYPTO — Top 50
 # -----------------------------------------------------------------------
 
-st.markdown('<p class="section-title">🪙 Marché Crypto — Top 50 par volume (évolution 24h)</p>', unsafe_allow_html=True)
+st.markdown('<p class="section-title">🪙 Marché Crypto — Top 50 (évolution 24h)</p>', unsafe_allow_html=True)
 
 if crypto_market:
     rows_crypto = []
     for t in crypto_market:
-        chg = float(t.get("priceChangePercent", 0))
-        rows_crypto.append({
-            "Crypto":           t["symbol"],
-            "Prix (USDT)":      f"{float(t['lastPrice']):,.4f}",
-            "Variation 24h":    f"{chg:+.2f}%",
-            "Volume 24h (USDT)": f"{float(t['quoteVolume']):,.0f}",
-            "Haut 24h":         f"{float(t['highPrice']):,.4f}",
-            "Bas 24h":          f"{float(t['lowPrice']):,.4f}",
-            "Trades 24h":       int(t.get("count", 0)),
-        })
+        try:
+            chg = float(t.get("priceChangePercent", 0))
+            rows_crypto.append({
+                "Crypto":            t["symbol"],
+                "Prix (USDT)":       f"{float(t['lastPrice']):,.4f}",
+                "Variation 24h":     f"{chg:+.2f}%",
+                "Volume 24h (USDT)": f"{float(t['quoteVolume']):,.0f}",
+                "Haut 24h":          f"{float(t['highPrice']):,.4f}",
+                "Bas 24h":           f"{float(t['lowPrice']):,.4f}",
+            })
+        except Exception:
+            pass
 
-    df_crypto = pd.DataFrame(rows_crypto)
+    if rows_crypto:
+        df_crypto = pd.DataFrame(rows_crypto)
 
-    def color_variation(val):
-        if isinstance(val, str) and val.startswith("+"): return "color:#00ff88"
-        if isinstance(val, str) and val.startswith("-"): return "color:#ff4444"
-        return ""
+        def color_variation(val):
+            if isinstance(val, str) and val.startswith("+"): return "color:#00ff88"
+            if isinstance(val, str) and val.startswith("-"): return "color:#ff4444"
+            return ""
 
-    # Filtre rapide
-    search = st.text_input("🔍 Rechercher une crypto (ex: ETH, BNB, SOL...)", "")
-    if search:
-        df_crypto = df_crypto[df_crypto["Crypto"].str.contains(search.upper())]
+        search = st.text_input("🔍 Rechercher une crypto (ex: ETH, BNB, SOL...)", "")
+        if search:
+            df_crypto = df_crypto[df_crypto["Crypto"].str.contains(search.upper())]
 
-    st.dataframe(
-        df_crypto.style.map(color_variation, subset=["Variation 24h"]),
-        use_container_width=True, hide_index=True, height=400,
-    )
+        st.dataframe(df_crypto.style.map(color_variation, subset=["Variation 24h"]),
+                     use_container_width=True, hide_index=True, height=400)
 
-    # Graphique top 10 hausses vs baisses
-    df_chart = pd.DataFrame([{
-        "symbol": t["symbol"],
-        "chg": float(t.get("priceChangePercent", 0))
-    } for t in crypto_market])
-    df_chart = df_chart.sort_values("chg", ascending=False)
+        df_chg = pd.DataFrame([{
+            "symbol": t["symbol"],
+            "chg":    float(t.get("priceChangePercent", 0))
+        } for t in crypto_market]).sort_values("chg", ascending=False)
 
-    top10_up   = df_chart.head(10)
-    top10_down = df_chart.tail(10).sort_values("chg")
-
-    c_up, c_down = st.columns(2)
-    with c_up:
-        st.markdown("**🟢 Top 10 hausses**")
-        fig_up = px.bar(top10_up, x="symbol", y="chg",
-                        color_discrete_sequence=["#00ff88"],
-                        labels={"chg": "Variation %", "symbol": ""})
-        fig_up.update_layout(template="plotly_dark", height=250,
-                             margin=dict(l=0,r=0,t=10,b=0))
-        st.plotly_chart(fig_up, use_container_width=True)
-
-    with c_down:
-        st.markdown("**🔴 Top 10 baisses**")
-        fig_down = px.bar(top10_down, x="symbol", y="chg",
-                          color_discrete_sequence=["#ff4444"],
-                          labels={"chg": "Variation %", "symbol": ""})
-        fig_down.update_layout(template="plotly_dark", height=250,
-                               margin=dict(l=0,r=0,t=10,b=0))
-        st.plotly_chart(fig_down, use_container_width=True)
+        c_up, c_down = st.columns(2)
+        with c_up:
+            st.markdown("**🟢 Top 10 hausses**")
+            fig_up = px.bar(df_chg.head(10), x="symbol", y="chg",
+                            color_discrete_sequence=["#00ff88"],
+                            labels={"chg": "Variation %", "symbol": ""})
+            fig_up.update_layout(template="plotly_dark", height=250,
+                                 margin=dict(l=0, r=0, t=10, b=0))
+            st.plotly_chart(fig_up, use_container_width=True)
+        with c_down:
+            st.markdown("**🔴 Top 10 baisses**")
+            fig_down = px.bar(df_chg.tail(10).sort_values("chg"), x="symbol", y="chg",
+                              color_discrete_sequence=["#ff4444"],
+                              labels={"chg": "Variation %", "symbol": ""})
+            fig_down.update_layout(template="plotly_dark", height=250,
+                                   margin=dict(l=0, r=0, t=10, b=0))
+            st.plotly_chart(fig_down, use_container_width=True)
 
 st.divider()
 
@@ -578,11 +548,11 @@ st.divider()
 
 st.markdown('<p class="section-title">📈 Statistiques de trading</p>', unsafe_allow_html=True)
 s1, s2, s3, s4, s5 = st.columns(5)
-s1.metric("Total trades",  stats.get("total", 0))
-s2.metric("Gagnants",      stats.get("wins", 0))
-s3.metric("Perdants",      stats.get("losses", 0))
-s4.metric("Win rate",      f"{stats.get('win_rate', 0):.1f}%")
-s5.metric("PnL total",     f"{stats.get('total_pnl_usd', 0):+.2f} USDT")
+s1.metric("Total trades", stats.get("total", 0))
+s2.metric("Gagnants",     stats.get("wins", 0))
+s3.metric("Perdants",     stats.get("losses", 0))
+s4.metric("Win rate",     f"{stats.get('win_rate', 0):.1f}%")
+s5.metric("PnL total",    f"{stats.get('total_pnl_usd', 0):+.2f} USDT")
 
 st.divider()
 st.markdown('<p class="section-title">📋 Historique des trades</p>', unsafe_allow_html=True)
@@ -591,23 +561,21 @@ if trades:
     rows_hist = []
     for t in reversed(trades[-30:]):
         rows_hist.append({
-            "Date entrée":  t.entry_time,
-            "Date sortie":  t.exit_time or "—",
-            "Crypto":       t.symbol,
-            "Stratégie":    t.strategy,
-            "Entrée":       f"{t.entry_price:,.4f}",
-            "Sortie":       f"{t.exit_price:,.4f}" if t.exit_price else "—",
-            "Raison":       t.exit_reason or "—",
-            "PnL %":        f"{t.pnl_pct:+.2f}%" if t.pnl_pct is not None else "—",
-            "PnL USDT":     f"{t.pnl_usd:+.4f}" if t.pnl_usd is not None else "—",
+            "Date entrée": t.entry_time,
+            "Date sortie": t.exit_time or "—",
+            "Crypto":      t.symbol,
+            "Stratégie":   t.strategy,
+            "Entrée":      f"{t.entry_price:,.4f}",
+            "Sortie":      f"{t.exit_price:,.4f}" if t.exit_price else "—",
+            "Raison":      t.exit_reason or "—",
+            "PnL %":       f"{t.pnl_pct:+.2f}%" if t.pnl_pct is not None else "—",
+            "PnL USDT":    f"{t.pnl_usd:+.4f}" if t.pnl_usd is not None else "—",
         })
     df_hist = pd.DataFrame(rows_hist)
-
     def color_h(val):
         if isinstance(val, str) and val.startswith("+"): return "color:#00ff88"
         if isinstance(val, str) and val.startswith("-"): return "color:#ff4444"
         return ""
-
     st.dataframe(df_hist.style.map(color_h, subset=["PnL %", "PnL USDT"]),
                  use_container_width=True, hide_index=True)
 else:
