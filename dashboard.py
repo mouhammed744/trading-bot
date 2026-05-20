@@ -125,19 +125,59 @@ def get_strategy_mgr():
 
 @st.cache_data(ttl=60)
 def get_crypto_market(_trader) -> list:
-    """Top 50 cryptos USDT avec prix et variation 24h."""
+    """Top 50 cryptos — Binance en priorité, CoinGecko en fallback."""
+    if _trader is not None:
+        try:
+            tickers = _trader.client.get_ticker()
+            usdt = [
+                t for t in tickers
+                if t["symbol"].endswith("USDT")
+                and not any(x in t["symbol"] for x in ["UP", "DOWN", "BULL", "BEAR"])
+                and float(t.get("quoteVolume", 0)) > 5_000_000
+            ]
+            usdt.sort(key=lambda x: float(x.get("quoteVolume", 0)), reverse=True)
+            if usdt:
+                return usdt[:50]
+        except Exception:
+            pass
+    # Fallback CoinGecko (API publique, aucune auth requise)
     try:
-        tickers = _trader.client.get_ticker()
-        usdt = [
-            t for t in tickers
-            if t["symbol"].endswith("USDT")
-            and not any(x in t["symbol"] for x in ["UP", "DOWN", "BULL", "BEAR"])
-            and float(t.get("quoteVolume", 0)) > 5_000_000
-        ]
-        usdt.sort(key=lambda x: float(x.get("quoteVolume", 0)), reverse=True)
-        return usdt[:50]
+        import requests as _req
+        r = _req.get(
+            "https://api.coingecko.com/api/v3/coins/markets",
+            params={"vs_currency": "usd", "order": "market_cap_desc",
+                    "per_page": 50, "page": 1},
+            timeout=10,
+        )
+        coins = r.json()
+        result = []
+        for c in coins:
+            result.append({
+                "symbol":             c["symbol"].upper() + "USDT",
+                "lastPrice":          str(c.get("current_price", 0)),
+                "priceChangePercent": str(round(c.get("price_change_percentage_24h") or 0, 2)),
+                "quoteVolume":        str(c.get("total_volume", 0)),
+                "highPrice":          str(c.get("high_24h", 0)),
+                "lowPrice":           str(c.get("low_24h", 0)),
+                "count":              0,
+                "_source":            "coingecko",
+            })
+        return result
     except Exception:
         return []
+
+@st.cache_data(ttl=300)
+def get_btc_ohlcv_fallback() -> pd.DataFrame:
+    """Données OHLCV BTC via yfinance si Binance indisponible."""
+    try:
+        hist = yf.Ticker("BTC-USD").history(period="7d", interval="1h")
+        if hist.empty:
+            return None
+        df = hist[["Open", "High", "Low", "Close", "Volume"]].copy()
+        df.columns = ["open", "high", "low", "close", "volume"]
+        return df
+    except Exception:
+        return None
 
 def load_portfolio_file() -> dict:
     path = ROOT / "data" / "portfolio.json"
@@ -191,65 +231,55 @@ analyzer     = get_analyzer()
 strategy_mgr = get_strategy_mgr()
 journal      = TradeJournal()
 
-if trader is None or not trader.ping():
-    st.error("Impossible de se connecter à Binance. Vérifiez vos clés API (fichier .env en local, ou Secrets dans les paramètres Streamlit Cloud).")
-    st.stop()
+binance_ok = trader is not None and trader.ping()
+if not binance_ok:
+    st.warning("⚠️ Binance inaccessible depuis ce serveur (restriction réseau). Solde et ordres indisponibles — données de marché via sources alternatives.")
 
 # -----------------------------------------------------------------------
 # Chargement données
 # -----------------------------------------------------------------------
 
 with st.spinner("Chargement des données…"):
-    _errors = []
+    # Solde (Binance uniquement)
+    balance_usdt = None
+    if binance_ok:
+        try:
+            balance_usdt = trader.get_account_balance("USDT")
+        except Exception:
+            pass
 
-    try:
-        balance_usdt = trader.get_account_balance("USDT")
-    except Exception as exc:
-        balance_usdt = 0.0
-        _errors.append(f"Solde USDT : {type(exc).__name__}: {exc}")
+    # OHLCV : Binance en priorité, yfinance en fallback
+    df_klines     = None
+    current_price = 0.0
+    if binance_ok:
+        try:
+            df_klines     = trader.get_klines(limit=200, symbol=config.SYMBOL)
+            current_price = float(df_klines["close"].iloc[-1])
+        except Exception:
+            pass
+    if df_klines is None:
+        df_klines = get_btc_ohlcv_fallback()
+        if df_klines is not None:
+            current_price = float(df_klines["close"].iloc[-1])
 
-    try:
-        df_klines     = trader.get_klines(limit=200, symbol=config.SYMBOL)
-        current_price = float(df_klines["close"].iloc[-1])
-    except Exception as exc:
-        df_klines     = None
-        current_price = 0.0
-        _errors.append(f"Klines {config.SYMBOL} : {type(exc).__name__}: {exc}")
-
+    # Signaux & analyse
     if df_klines is not None:
         try:
             signals = strategy_mgr.get_signal(df_klines)
-        except Exception as exc:
+        except Exception:
             signals = {"signal": "HOLD", "buy_pct": 0, "sell_pct": 0, "details": {}}
-            _errors.append(f"Stratégies : {type(exc).__name__}: {exc}")
-
         try:
             analysis = analyzer.analyze(df_klines)
-        except Exception as exc:
+        except Exception:
             analysis = {"trend": "—", "confidence": 0, "rsi": 0, "ema50": 0,
                         "ema200": 0, "atr_pct": 0, "recommendation": "—", "reasons": []}
-            _errors.append(f"Analyse marché : {type(exc).__name__}: {exc}")
     else:
-        signals  = {"signal": "HOLD", "buy_pct": 0, "sell_pct": 0, "details": {}}
+        signals  = {"signal": "—", "buy_pct": 0, "sell_pct": 0, "details": {}}
         analysis = {"trend": "—", "confidence": 0, "rsi": 0, "ema50": 0,
                     "ema200": 0, "atr_pct": 0, "recommendation": "—", "reasons": []}
 
-    try:
-        crypto_market = get_crypto_market(trader)
-    except Exception as exc:
-        crypto_market = []
-        _errors.append(f"Marché crypto : {type(exc).__name__}: {exc}")
-
-    try:
-        commodities = get_commodity_data()
-    except Exception as exc:
-        commodities = {}
-        _errors.append(f"Matières premières : {type(exc).__name__}: {exc}")
-
-    if _errors:
-        with st.expander("⚠️ Erreurs de chargement (cliquer pour voir)", expanded=True):
-            for e in _errors:
-                st.warning(e)
+    crypto_market = get_crypto_market(trader if binance_ok else None)
+    commodities   = get_commodity_data()
 
 portfolio_data = load_portfolio_file()
 scores  = load_scores()
@@ -275,13 +305,13 @@ if portfolio_data:
 # -----------------------------------------------------------------------
 
 m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("Solde USDT",        f"{balance_usdt:,.2f} USDT")
-m2.metric(f"{config.SYMBOL}",  f"{current_price:,.2f} USDT")
+m1.metric("Solde USDT",        f"{balance_usdt:,.2f} USDT" if balance_usdt is not None else "N/A")
+m2.metric(f"{config.SYMBOL}",  f"{current_price:,.2f} USDT" if current_price else "N/A")
 m3.metric("Positions ouvertes",f"{n_pos} / {config.MAX_POSITIONS}")
-m4.metric("PnL portefeuille",  f"{total_pnl_pct:+.2f}%",
+m4.metric("PnL portefeuille",  f"{total_pnl_pct:+.2f}%" if binance_ok else "N/A",
           delta_color="normal" if total_pnl_pct >= 0 else "inverse")
 m5.metric("Signal consensus",  signals["signal"],
-          f"BUY {signals['buy_pct']:.0f}%  SELL {signals['sell_pct']:.0f}%")
+          f"BUY {signals['buy_pct']:.0f}%  SELL {signals['sell_pct']:.0f}%" if signals["signal"] != "—" else "")
 
 st.divider()
 
