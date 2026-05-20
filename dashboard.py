@@ -439,6 +439,92 @@ with col_s:
 st.divider()
 
 # -----------------------------------------------------------------------
+# 💰 FONDS NÉCESSAIRES POUR TRADER
+# -----------------------------------------------------------------------
+
+st.markdown('<p class="section-title">💰 Fonds nécessaires pour trader</p>', unsafe_allow_html=True)
+
+if current_price > 0:
+    trade_pct   = config.TRADE_BALANCE_PCT        # ex: 0.10 = 10%
+    min_usdt    = config.MIN_USDT_BALANCE          # solde minimum requis
+    max_pos     = config.MAX_POSITIONS
+
+    # Montant investi par trade = solde × TRADE_BALANCE_PCT
+    # Pour avoir une quantité non nulle, il faut au moins :
+    # balance_min = prix × 0.0001 / TRADE_BALANCE_PCT
+    MIN_QTY     = 0.0001                           # quantité plancher générique
+    balance_min = (MIN_QTY * current_price) / trade_pct
+    balance_min = max(balance_min, min_usdt)       # au moins MIN_USDT_BALANCE
+
+    # Calcul avec le solde réel si disponible
+    if balance_usdt and balance_usdt > 0:
+        budget_trade   = balance_usdt * trade_pct
+        qty_achetee    = budget_trade / current_price
+        slots_restants = max_pos - n_pos
+
+        f1, f2, f3, f4 = st.columns(4)
+        f1.metric("Solde disponible",   f"{balance_usdt:,.2f} USDT")
+        f2.metric("Budget par trade",   f"{budget_trade:,.2f} USDT",
+                  f"{trade_pct*100:.0f}% du solde")
+        f3.metric(f"Qté {config.SYMBOL.replace('USDT','')} achetée",
+                  f"{qty_achetee:.6f}")
+        f4.metric("Slots disponibles",  f"{slots_restants} / {max_pos}")
+
+        # Message selon le signal et le solde
+        if signals["signal"] == "BUY":
+            if balance_usdt >= balance_min:
+                st.success(
+                    f"✅ **Signal BUY sur {config.SYMBOL}** — "
+                    f"Le bot va investir **{budget_trade:,.2f} USDT** "
+                    f"pour acheter **{qty_achetee:.6f} {config.SYMBOL.replace('USDT','')}** "
+                    f"au prix de **{current_price:,.2f} USDT**."
+                )
+            else:
+                st.error(
+                    f"⛔ **Signal BUY mais solde insuffisant** — "
+                    f"Vous avez **{balance_usdt:,.2f} USDT**, "
+                    f"il faut au moins **{balance_min:,.2f} USDT** pour que le bot trade."
+                )
+        elif signals["signal"] == "SELL":
+            st.warning(f"📉 Signal SELL — le bot cherche à vendre les positions ouvertes.")
+        else:
+            st.info(
+                f"⏳ Signal HOLD — le bot attend une opportunité. "
+                f"Avec **{balance_usdt:,.2f} USDT**, il pourrait investir "
+                f"**{budget_trade:,.2f} USDT** par trade dès qu'un signal BUY apparaît."
+            )
+    else:
+        # Pas de solde connu (cloud) — afficher les seuils indicatifs
+        f1, f2, f3 = st.columns(3)
+        f1.metric("% du solde par trade",      f"{trade_pct*100:.0f}%")
+        f2.metric("Solde minimum recommandé",  f"{balance_min:,.2f} USDT")
+        f3.metric("Prix actuel {config.SYMBOL}", f"{current_price:,.2f} USDT")
+
+        st.info(
+            f"ℹ️ Pour que le bot trade **{config.SYMBOL}** au prix actuel de **{current_price:,.2f} USDT**, "
+            f"il vous faut au moins **{balance_min:,.2f} USDT** sur votre compte Binance. "
+            f"Le bot investit **{trade_pct*100:.0f}%** de votre solde par trade, "
+            f"soit **{balance_min * trade_pct:,.2f} USDT** par position."
+        )
+
+        # Table indicative : combien faut-il pour différents soldes
+        st.markdown("**Simulation — montant investi selon votre solde :**")
+        sim_rows = []
+        for solde in [50, 100, 200, 500, 1000, 2000, 5000]:
+            budget = solde * trade_pct
+            qty    = budget / current_price
+            sim_rows.append({
+                "Solde USDT":       f"{solde:,} USDT",
+                "Budget / trade":   f"{budget:,.2f} USDT",
+                f"Qté {config.SYMBOL.replace('USDT','')}": f"{qty:.6f}",
+                "Positions max":    str(max_pos),
+                "Capital total":    f"{budget * max_pos:,.2f} USDT",
+            })
+        st.dataframe(pd.DataFrame(sim_rows), use_container_width=True, hide_index=True)
+
+st.divider()
+
+# -----------------------------------------------------------------------
 # PORTEFEUILLE
 # -----------------------------------------------------------------------
 
