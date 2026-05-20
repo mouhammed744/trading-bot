@@ -182,7 +182,7 @@ strategy_mgr = get_strategy_mgr()
 journal      = TradeJournal()
 
 if trader is None or not trader.ping():
-    st.error("Impossible de se connecter à Binance. Vérifiez vos clés API dans .env")
+    st.error("Impossible de se connecter à Binance. Vérifiez vos clés API (fichier .env en local, ou Secrets dans les paramètres Streamlit Cloud).")
     st.stop()
 
 # -----------------------------------------------------------------------
