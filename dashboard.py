@@ -716,6 +716,99 @@ if crypto_market:
 st.divider()
 
 # -----------------------------------------------------------------------
+# 💼 RÉSUMÉ FINANCIER
+# -----------------------------------------------------------------------
+
+st.markdown('<p class="section-title">💼 Résumé financier</p>', unsafe_allow_html=True)
+
+# Calculs sur tous les trades fermés
+total_investi   = sum(t.entry_price * t.quantity for t in trades)
+total_recupere  = sum((t.exit_price or 0) * t.quantity for t in trades)
+benefice_total  = sum(t.pnl_usd or 0 for t in trades)
+meilleur_trade  = max((t.pnl_usd or 0 for t in trades), default=0)
+pire_trade      = min((t.pnl_usd or 0 for t in trades), default=0)
+
+# Valeur positions ouvertes
+valeur_ouverte  = 0.0
+investi_ouvert  = 0.0
+if portfolio_data and binance_ok:
+    for sym, pos in portfolio_data.items():
+        try:
+            p = trader.get_ticker_price(symbol=sym)
+            valeur_ouverte += p * pos["quantity"]
+            investi_ouvert += pos["entry_price"] * pos["quantity"]
+        except Exception:
+            pass
+
+pnl_ouvert = valeur_ouverte - investi_ouvert
+
+# Solde de départ estimé
+solde_actuel = balance_usdt or 0.0
+capital_total = solde_actuel + investi_ouvert
+
+# Affichage
+r1, r2, r3, r4 = st.columns(4)
+r1.metric(
+    "💰 Solde disponible",
+    f"{solde_actuel:,.2f} USDT",
+)
+r2.metric(
+    "📥 Total investi",
+    f"{total_investi + investi_ouvert:,.2f} USDT",
+    help="Montant total engagé dans tous les trades"
+)
+r3.metric(
+    "📤 Total récupéré",
+    f"{total_recupere:,.2f} USDT",
+    help="Montant total récupéré après vente"
+)
+r4.metric(
+    "📊 Bénéfice net",
+    f"{benefice_total:+.2f} USDT",
+    delta=f"{benefice_total:+.2f} USDT",
+    delta_color="normal" if benefice_total >= 0 else "inverse",
+)
+
+st.markdown("")
+
+r5, r6, r7, r8 = st.columns(4)
+r5.metric(
+    "📈 Positions ouvertes",
+    f"{valeur_ouverte:,.2f} USDT",
+    delta=f"{pnl_ouvert:+.2f} USDT",
+    delta_color="normal" if pnl_ouvert >= 0 else "inverse",
+    help="Valeur actuelle des positions en cours"
+)
+r6.metric(
+    "🏆 Meilleur trade",
+    f"{meilleur_trade:+.2f} USDT",
+    delta_color="normal",
+)
+r7.metric(
+    "💔 Pire trade",
+    f"{pire_trade:+.2f} USDT",
+    delta_color="inverse" if pire_trade < 0 else "normal",
+)
+r8.metric(
+    "🎯 Win rate",
+    f"{stats.get('win_rate', 0):.1f}%",
+    f"{stats.get('wins', 0)}W / {stats.get('losses', 0)}L",
+)
+
+# Barre de progression bénéfice
+if total_investi > 0:
+    roi = (benefice_total / total_investi) * 100
+    st.markdown(f"**ROI global : {roi:+.2f}%**")
+    bar_val = min(max((roi + 100) / 200, 0), 1)
+    st.progress(bar_val)
+elif trades:
+    st.info("En attente de trades fermés pour calculer le ROI.")
+else:
+    st.info("Aucun trade effectué pour l'instant — le bot cherche des opportunités.")
+
+st.divider()
+
+# -----------------------------------------------------------------------
 # Statistiques + Historique
 # -----------------------------------------------------------------------
 
