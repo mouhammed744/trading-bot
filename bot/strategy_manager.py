@@ -76,11 +76,32 @@ class StrategyManager:
         sell_pct = votes[SELL] / total_weight
 
         from bot import config
-        threshold = getattr(config, "SIGNAL_THRESHOLD", 0.28)
-        if buy_pct > threshold:
+        threshold_high = getattr(config, "SIGNAL_THRESHOLD_HIGH", 0.43)  # 3/7 — consensus normal
+        threshold_low  = getattr(config, "SIGNAL_THRESHOLD_LOW",  0.14)  # 1/7 — meilleure stratégie seule
+
+        # Identifier la meilleure stratégie (historique prouvé : ≥5 trades, ≥50% win rate)
+        best_name  = self.best_strategy()
+        best_info  = self._scores.get(best_name, {})
+        best_signal = details.get(best_name, {}).get("signal", HOLD)
+        best_proven = (
+            best_info.get("trades", 0) >= 5 and
+            best_info.get("win_rate", 0) >= 50.0
+        )
+
+        # Règle 1 : consensus normal (3+ stratégies) → toujours trader
+        if buy_pct > threshold_high:
             final = BUY
-        elif sell_pct > threshold:
+        elif sell_pct > threshold_high:
             final = SELL
+        # Règle 2 : meilleure stratégie seule (si historique prouvé) → trader aussi
+        elif best_proven and best_signal == BUY and buy_pct > threshold_low:
+            final = BUY
+            logger.info("Seuil bas activé — %s seul déclenche BUY (WR=%.1f%% trades=%d)",
+                        best_name, best_info["win_rate"], best_info["trades"])
+        elif best_proven and best_signal == SELL and sell_pct > threshold_low:
+            final = SELL
+            logger.info("Seuil bas activé — %s seul déclenche SELL (WR=%.1f%% trades=%d)",
+                        best_name, best_info["win_rate"], best_info["trades"])
         else:
             final = HOLD
 

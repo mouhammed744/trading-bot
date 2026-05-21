@@ -30,9 +30,12 @@ MAX_POSITIONS      = int(os.getenv("MAX_POSITIONS", "10"))
 SCAN_INTERVAL      = int(os.getenv("SCAN_INTERVAL", "300"))
 MULTI_CRYPTO       = os.getenv("MULTI_CRYPTO", "true").lower() == "true"
 
-# Signal threshold — nombre de strategies minimum pour trader
-# 0.28 = 2 strategies sur 7 | 0.43 = 3/7 | 0.60 = 4/7
-SIGNAL_THRESHOLD   = float(os.getenv("SIGNAL_THRESHOLD", "0.28"))
+# Seuils de signal adaptatifs
+# SIGNAL_THRESHOLD_LOW  : 1 stratégie suffit si c'est la meilleure (avec historique prouvé)
+# SIGNAL_THRESHOLD_HIGH : 3 stratégies requises en temps normal
+SIGNAL_THRESHOLD      = float(os.getenv("SIGNAL_THRESHOLD",      "0.43"))  # rétro-compat
+SIGNAL_THRESHOLD_LOW  = float(os.getenv("SIGNAL_THRESHOLD_LOW",  "0.14"))  # 1/7 stratégies
+SIGNAL_THRESHOLD_HIGH = float(os.getenv("SIGNAL_THRESHOLD_HIGH", "0.43"))  # 3/7 stratégies
 
 # Technical indicators
 RSI_PERIOD = 14
