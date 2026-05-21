@@ -76,20 +76,24 @@ def _do_report(journal, strategy_manager, sl, tp, logger):
 
 
 def _multi_tf_bullish(trader: Trader, symbol: str, logger) -> bool:
-    """Verifie tendance haussiere sur 1h et 4h avant d'acheter."""
+    """
+    Verifie tendance haussiere sur 1h ET 4h avant d'acheter.
+    Exige les deux timeframes pour eviter les faux signaux.
+    """
     bullish = 0
     for interval, limit in [("1h", 100), ("4h", 50)]:
         try:
             df = trader.get_klines(limit=limit, interval=interval, symbol=symbol)
             close = df["close"]
-            ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1])
-            price = float(close.iloc[-1])
-            if price > ema50:
+            ema50  = float(close.ewm(span=50,  adjust=False).mean().iloc[-1])
+            ema200 = float(close.ewm(span=200, adjust=False).mean().iloc[-1])
+            price  = float(close.iloc[-1])
+            # Prix au-dessus de EMA50 ET EMA50 au-dessus de EMA200 (tendance claire)
+            if price > ema50 and ema50 > ema200:
                 bullish += 1
         except Exception as exc:
             logger.debug("Multi-TF %s %s: %s", symbol, interval, exc)
-            bullish += 1
-    return bullish >= 1
+    return bullish >= 2  # exige les DEUX timeframes
 
 
 def _calc_quantity(balance_usdt: float, price: float, n_slots: int) -> float:
