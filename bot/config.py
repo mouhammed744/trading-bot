@@ -26,9 +26,13 @@ TRAILING_SL_ENABLED = os.getenv("TRAILING_SL_ENABLED", "true").lower() == "true"
 TRAILING_SL_PCT = float(os.getenv("TRAILING_SL_PCT", "1.5"))
 
 # Multi-crypto portfolio
-MAX_POSITIONS      = int(os.getenv("MAX_POSITIONS", "10"))       # positions max en simultanee
-SCAN_INTERVAL      = int(os.getenv("SCAN_INTERVAL", "300"))      # scan toutes les 5 min
-MULTI_CRYPTO       = os.getenv("MULTI_CRYPTO", "true").lower() == "true"  # activer le mode multi-crypto
+MAX_POSITIONS      = int(os.getenv("MAX_POSITIONS", "10"))
+SCAN_INTERVAL      = int(os.getenv("SCAN_INTERVAL", "300"))
+MULTI_CRYPTO       = os.getenv("MULTI_CRYPTO", "true").lower() == "true"
+
+# Signal threshold — nombre de strategies minimum pour trader
+# 0.28 = 2 strategies sur 7 | 0.43 = 3/7 | 0.60 = 4/7
+SIGNAL_THRESHOLD   = float(os.getenv("SIGNAL_THRESHOLD", "0.28"))
 
 # Technical indicators
 RSI_PERIOD = 14

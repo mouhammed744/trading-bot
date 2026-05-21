@@ -75,9 +75,11 @@ class StrategyManager:
         buy_pct  = votes[BUY]  / total_weight
         sell_pct = votes[SELL] / total_weight
 
-        if buy_pct > 0.6:   # au moins 60% du poids vote BUY (3 strategies sur 5)
+        from bot import config
+        threshold = getattr(config, "SIGNAL_THRESHOLD", 0.28)
+        if buy_pct > threshold:
             final = BUY
-        elif sell_pct > 0.6:
+        elif sell_pct > threshold:
             final = SELL
         else:
             final = HOLD
