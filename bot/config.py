@@ -79,8 +79,8 @@ def validate_config():
         errors.append("QUANTITY must be positive")
     if STOP_LOSS_PCT <= 0 or STOP_LOSS_PCT >= 100:
         errors.append("STOP_LOSS_PCT must be between 0 and 100")
-    if TRADE_BALANCE_PCT > 0.25:
-        errors.append("TRADE_BALANCE_PCT > 25% est dangereux — valeur recommandee: 0.05 a 0.10")
+    if TRADE_BALANCE_PCT > 0.75:
+        errors.append("TRADE_BALANCE_PCT > 75% est trop risque — maximum recommande: 0.50")
     if TAKE_PROFIT_PCT <= 0 or TAKE_PROFIT_PCT >= 100:
         errors.append("TAKE_PROFIT_PCT must be between 0 and 100")
     return errors
