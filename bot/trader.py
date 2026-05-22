@@ -1,4 +1,5 @@
 import logging
+import math
 import time
 import pandas as pd
 from binance.client import Client
@@ -78,12 +79,36 @@ class Trader:
         return 0.0
 
     # ------------------------------------------------------------------
+    # Lot size helpers
+    # ------------------------------------------------------------------
+
+    def get_lot_step(self, symbol: str) -> float:
+        """Retourne le stepSize (précision quantité) du symbole depuis Binance."""
+        try:
+            info = self.client.get_symbol_info(symbol)
+            for f in (info or {}).get("filters", []):
+                if f["filterType"] == "LOT_SIZE":
+                    return float(f["stepSize"])
+        except Exception:
+            pass
+        return 0.01  # fallback prudent
+
+    def round_qty(self, qty: float, symbol: str) -> float:
+        """Arrondit la quantité au stepSize autorisé par Binance (toujours vers le bas)."""
+        step = self.get_lot_step(symbol)
+        if step <= 0:
+            return qty
+        precision = max(0, round(-math.log10(step)))
+        rounded = math.floor(qty / step) * step
+        return round(rounded, precision)
+
+    # ------------------------------------------------------------------
     # Order execution
     # ------------------------------------------------------------------
 
     def place_market_buy(self, quantity: float = None, symbol: str = None) -> dict:
         sym = symbol or self.symbol
-        qty = quantity if quantity is not None else self.quantity
+        qty = self.round_qty(quantity if quantity is not None else self.quantity, sym)
         logger.info("MARKET BUY — %s qty=%.6f", sym, qty)
         try:
             order = self.client.order_market_buy(symbol=sym, quantity=qty)
@@ -95,7 +120,7 @@ class Trader:
 
     def place_market_sell(self, quantity: float = None, symbol: str = None) -> dict:
         sym = symbol or self.symbol
-        qty = quantity if quantity is not None else self.quantity
+        qty = self.round_qty(quantity if quantity is not None else self.quantity, sym)
         logger.info("MARKET SELL — %s qty=%.6f", sym, qty)
         try:
             order = self.client.order_market_sell(symbol=sym, quantity=qty)
