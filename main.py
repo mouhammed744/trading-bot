@@ -93,7 +93,7 @@ def _multi_tf_bullish(trader: Trader, symbol: str, logger) -> bool:
                 bullish += 1
         except Exception as exc:
             logger.debug("Multi-TF %s %s: %s", symbol, interval, exc)
-    return bullish >= 2  # exige les DEUX timeframes
+    return bullish >= 1  # 1 seul timeframe suffit (1h OU 4h)
 
 
 def _calc_quantity(balance_usdt: float, price: float, n_slots: int) -> float:

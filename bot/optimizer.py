@@ -22,8 +22,10 @@ def _load_params() -> dict:
                 return json.load(f)
         except Exception:
             pass
-    return {"stop_loss_pct": 2.0, "take_profit_pct": 4.0, "optimized_at": None,
-            "best_score": 0.0, "history": []}
+    # Utilise les valeurs du .env comme défauts
+    from bot import config
+    return {"stop_loss_pct": config.STOP_LOSS_PCT, "take_profit_pct": config.TAKE_PROFIT_PCT,
+            "optimized_at": None, "best_score": 0.0, "history": []}
 
 
 def _save_params(params: dict):
