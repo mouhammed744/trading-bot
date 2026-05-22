@@ -27,13 +27,17 @@ class BreakoutStrategy(BaseStrategy):
         df["resistance"] = df["high"].shift(1).rolling(self.lookback).max()
         df["support"]    = df["low"].shift(1).rolling(self.lookback).min()
         df["vol_ma"]     = df["volume"].rolling(self.volume_ma_period).mean()
-        adx = ta.trend.ADXIndicator(df["high"], df["low"], df["close"], self.adx_period)
-        df["adx"] = adx.adx()
+        try:
+            adx = ta.trend.ADXIndicator(df["high"], df["low"], df["close"], self.adx_period)
+            df["adx"] = adx.adx()
+        except Exception:
+            df["adx"] = 0.0
         df["rsi"] = ta.momentum.RSIIndicator(df["close"], 14).rsi()
         return df
 
     def get_signal(self, df: pd.DataFrame) -> str:
-        if len(df) < self.lookback + 5:
+        min_rows = max(self.lookback + 5, self.adx_period * 3 + 1)
+        if len(df) < min_rows:
             return HOLD
         df = self._compute(df)
         df.dropna(inplace=True)
@@ -58,7 +62,8 @@ class BreakoutStrategy(BaseStrategy):
         return HOLD
 
     def get_indicators(self, df: pd.DataFrame) -> dict:
-        if len(df) < self.lookback + 5:
+        min_rows = max(self.lookback + 5, self.adx_period * 3 + 1)
+        if len(df) < min_rows:
             return {}
         df = self._compute(df)
         df.dropna(inplace=True)
