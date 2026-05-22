@@ -210,7 +210,7 @@ def get_analyzer():
 def get_strategy_mgr():
     return StrategyManager()
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=10)
 def get_crypto_market(_trader) -> list:
     """Top 50 cryptos — Binance en priorité, CoinGecko en fallback."""
     if _trader is not None:
@@ -852,6 +852,6 @@ else:
 # -----------------------------------------------------------------------
 
 st.divider()
-st.caption(f"Mise à jour : {pd.Timestamp.now().strftime('%H:%M:%S')} — Prochaine dans 30s")
-time.sleep(30)
+st.caption(f"Mise à jour : {pd.Timestamp.now().strftime('%H:%M:%S')} — Prochaine dans 5s")
+time.sleep(5)
 st.rerun()
