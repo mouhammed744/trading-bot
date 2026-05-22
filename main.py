@@ -119,8 +119,8 @@ def _open_trade(trader, portfolio, journal, strategy_mgr, symbol, signal_result,
         logger.warning("Prix %s indisponible: %s", symbol, exc)
         return
 
-    free_slots = config.MAX_POSITIONS - portfolio.count()
-    qty = _calc_quantity(balance_usdt, price, free_slots)
+    free_slots = max(config.MAX_POSITIONS - portfolio.count(), 1)
+    qty = _calc_quantity(balance_usdt, price, 1)  # 50% du solde par trade, sans diviser par slots
 
     if qty * price < config.MIN_USDT_BALANCE:
         logger.info("%s: mise trop faible (%.2f USDT) — ignore", symbol, qty * price)
