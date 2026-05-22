@@ -285,9 +285,14 @@ def run_bot(mode: str, poll_seconds: int, report_only: bool = False, analyze_onl
                     try:
                         df_opp = trader.get_klines(limit=300, symbol=symbol)
                         market = analyzer.analyze(df_opp)
-                        if market["recommendation"] == "EVITER":
+                        reco = market.get("recommendation", "—")
+                        logger.info("%s | Recommandation: %s | Confiance: %.0f%% | Tendance: %s",
+                                    symbol, reco, market.get("confidence", 0), market.get("trend", "—"))
+                        if reco == "EVITER":
+                            logger.info("%s: marche classe EVITER — ignore", symbol)
                             continue
-                    except Exception:
+                    except Exception as exc:
+                        logger.warning("%s: erreur analyse marche — %s", symbol, exc)
                         continue
 
                     _open_trade(trader, portfolio, journal, strategy_mgr,
