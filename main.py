@@ -260,9 +260,14 @@ def run_bot(mode: str, poll_seconds: int, report_only: bool = False, analyze_onl
                     df = trader.get_klines(limit=200, symbol=symbol)
                     result = strategy_mgr.get_signal(df)
                     if result["signal"] == "SELL":
-                        _close_trade(trader, portfolio, journal, strategy_mgr,
-                                     symbol, "SIGNAL_SELL", logger)
-                        closed_count += 1
+                        pnl = pos.calc_pnl_pct(price)
+                        if pnl >= 2.0:
+                            _close_trade(trader, portfolio, journal, strategy_mgr,
+                                         symbol, "SIGNAL_SELL", logger)
+                            closed_count += 1
+                        else:
+                            logger.info("%s: Signal SELL ignore — PnL trop faible (%.2f%% < 2%%)",
+                                        symbol, pnl)
 
                 except Exception as exc:
                     logger.error("Erreur surveillance %s: %s", symbol, exc)
