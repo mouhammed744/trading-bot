@@ -160,7 +160,13 @@ def _close_trade(trader, portfolio, journal, strategy_mgr, symbol, reason, logge
         None
     )
     try:
-        trader.place_market_sell(quantity=pos.quantity, symbol=symbol)
+        # Utilise le solde réel du token pour éviter l'erreur -2010
+        asset = symbol.replace("USDT", "")
+        real_qty = trader.get_account_balance(asset)
+        sell_qty = real_qty if real_qty > 0 else pos.quantity
+        logger.info("Vente %s: solde reel=%.6f qty_portfolio=%.6f", symbol, real_qty, pos.quantity)
+
+        trader.place_market_sell(quantity=sell_qty, symbol=symbol)
         price = trader.get_ticker_price(symbol=symbol)
         pnl = pos.calc_pnl_pct(price)
         if open_trade:
