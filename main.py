@@ -270,12 +270,12 @@ def run_bot(mode: str, poll_seconds: int, report_only: bool = False, analyze_onl
                                          symbol, "SIGNAL_SELL_URGENT", logger)
                             closed_count += 1
                         # SELL faible (1 strategie) → vend seulement si profit >= 2%
-                        elif pnl >= 2.0:
+                        elif pnl >= 0.5:
                             _close_trade(trader, portfolio, journal, strategy_mgr,
                                          symbol, "SIGNAL_SELL", logger)
                             closed_count += 1
                         else:
-                            logger.info("%s: Signal SELL faible ignore — PnL=%.2f%% < 2%%",
+                            logger.info("%s: Signal SELL faible ignore — PnL=%.2f%% < 0.5%%",
                                         symbol, pnl)
 
                 except Exception as exc:
